@@ -11,38 +11,6 @@ This project implements a complete **Edge-to-Cloud IoT solution** for managing R
 *   **Web Dashboard**: A real-time web interface to view current balances.
 *   **Cloud Top-Up**: Users can add funds ("top-up") to a card through the dashboard, which instantly updates the physical device.
 
----
-
-## 2. System Architecture
-
-The system uses a 3-tier architecture designed for security, efficiency, and real-time communication.
-
-```mermaid
-graph TD
-    subgraph "Edge Layer"
-        ESP[ESP8266 Controller]
-        RFID[RFID Reader (RC522)]
-        ESP -- SPI --> RFID
-    end
-
-    subgraph "Cloud Layer (VPS)"
-        Wrapper[Backend Service]
-        Broker[MQTT Broker]
-    end
-
-    subgraph "User Layer"
-        Dash[Web Dashboard]
-    end
-
-    %% Communication Flows
-    ESP <-- "MQTT (Topics)" --> Broker
-    Broker <-- "Local MQTT" --> Wrapper
-    Wrapper <-- "HTTP POST & WebSockets" --> Dash
-
-    %% Styling
-    style ESP fill:#f9f,stroke:#333,stroke-width:2px
-    style Wrapper fill:#bbf,stroke:#333,stroke-width:2px
-    style Dash fill:#bfb,stroke:#333,stroke-width:2px
 ```
 
 ### Components
