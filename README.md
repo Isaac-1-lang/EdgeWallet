@@ -1,4 +1,4 @@
-# EdgeWallet RFID System
+# EdgeWallet System
 
 **Team ID:** `[Insert Your Team ID]`
 
@@ -42,7 +42,7 @@ graph TD
     %% Styling
     style ESP fill:#f9f,stroke:#333,stroke-width:2px
     style Wrapper fill:#bbf,stroke:#333,stroke-width:2px
-    style Dash fill:#bfb,stroke:#333,stroke-width:2px
+    style Dash fill:#000,stroke:#333,stroke-width:2px
 ```
 
 ### Components
@@ -152,4 +152,4 @@ Open `frontend/index.html` in your browser.
 3.  Reset the board to connect to the broker.
 
 ---
-*Project for Embedded System Software Integration Course*
+*Author : Isaac-1-lang*
