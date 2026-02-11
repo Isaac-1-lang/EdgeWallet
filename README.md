@@ -1,6 +1,6 @@
 # EdgeWallet System
 
-**Team ID:** `[Insert Your Team ID]`
+**Team ID:** `[10]`
 
 ## 1. Project Overview
 
