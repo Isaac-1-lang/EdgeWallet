@@ -21,7 +21,7 @@ The system uses a 3-tier architecture designed for security, efficiency, and rea
 graph TD
     subgraph "Edge Layer"
         ESP[ESP8266 Controller]
-        RFID[RFID Reader (RC522)]
+        RFID["RFID Reader (RC522)"]
         ESP -- SPI --> RFID
     end
 
