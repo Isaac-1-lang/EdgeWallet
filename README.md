@@ -1,4 +1,4 @@
-# EdgeWallet RFID System
+# EdgeWallet System
 
 **Team ID:** `[Insert Your Team ID]`
 
@@ -152,4 +152,4 @@ Open `frontend/index.html` in your browser.
 3.  Reset the board to connect to the broker.
 
 ---
-*Project for Embedded System Software Integration Course*
+*Author : Isaac-1-lang*
