@@ -1,4 +1,4 @@
-# Edge-To-Cloud RFID System
+# EdgeWallet RFID System
 
 **Team ID:** `[Insert Your Team ID]`
 
