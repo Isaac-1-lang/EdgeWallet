@@ -42,7 +42,7 @@ graph TD
     %% Styling
     style ESP fill:#f9f,stroke:#333,stroke-width:2px
     style Wrapper fill:#bbf,stroke:#333,stroke-width:2px
-    style Dash fill:#bfb,stroke:#333,stroke-width:2px
+    style Dash fill:#000,stroke:#333,stroke-width:2px
 ```
 
 ### Components
