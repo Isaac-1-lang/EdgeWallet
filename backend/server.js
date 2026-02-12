@@ -68,18 +68,41 @@ mqttClient.on('connect', () => {
   mqttClient.subscribe(TOPIC_BALANCE);
 });
 
-mqttClient.on('message', (topic, message) => {
+mqttClient.on('message', async (topic, message) => {
   console.log(`Received message on ${topic}: ${message.toString()}`);
   try {
     const payload = JSON.parse(message.toString());
 
     if (topic === TOPIC_STATUS) {
-      io.emit('card-status', payload);
+      // Auto-create card if it doesn't exist
+      const { uid, balance } = payload;
+      let card = await Card.findOne({ uid });
+
+      if (!card) {
+        console.log(`New card detected: ${uid}, creating record...`);
+        card = new Card({
+          uid,
+          holderName: 'New User',
+          balance: balance || 0,
+          lastTopup: 0
+        });
+        await card.save();
+        console.log(`Card created: ${uid}`);
+      }
+
+      // Send the latest card data to the frontend
+      io.emit('card-status', {
+        uid: card.uid,
+        balance: card.balance,
+        holderName: card.holderName,
+        status: 'detected'
+      });
+
     } else if (topic === TOPIC_BALANCE) {
       io.emit('card-balance', payload);
     }
   } catch (err) {
-    console.error('Failed to parse MQTT message:', err);
+    console.error('Failed to parse MQTT message or save card:', err);
   }
 });
 
@@ -95,7 +118,7 @@ app.post('/topup', async (req, res) => {
     // Find or create card
     let card = await Card.findOne({ uid });
     const balanceBefore = card ? card.balance : 0;
-    
+
     if (!card) {
       if (!holderName) {
         return res.status(400).json({ error: 'Holder name is required for new cards' });
@@ -106,6 +129,11 @@ app.post('/topup', async (req, res) => {
       card.balance += amount;
       card.lastTopup = amount;
       card.updatedAt = Date.now();
+
+      // Allow updating holder name if provided (e.g. renaming "New User")
+      if (holderName && holderName.trim() !== '' && holderName !== card.holderName) {
+        card.holderName = holderName;
+      }
     }
 
     await card.save();
@@ -132,8 +160,8 @@ app.post('/topup', async (req, res) => {
       console.log(`Published topup for ${uid} (${card.holderName}): ${card.balance}`);
     });
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Topup successful',
       card: {
         uid: card.uid,

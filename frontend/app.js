@@ -58,7 +58,7 @@ socket.on('connect', () => {
   updateSystemStatus('backend', true);
   updateSystemStatus('mqtt', true);
   connectionIndicator.classList.add('connected');
-  
+
   // Load initial stats
   loadStats();
 });
@@ -81,8 +81,16 @@ socket.on('card-status', async (data) => {
     if (response.ok) {
       currentCardData = await response.json();
       holderNameInput.value = currentCardData.holderName;
-      holderNameInput.readOnly = true;
-      
+
+      // Allow editing if it's a "New User" placeholder
+      if (currentCardData.holderName === 'New User') {
+        holderNameInput.readOnly = false;
+        holderNameInput.focus();
+        holderNameInput.select(); // Select all text for easy replacement
+      } else {
+        holderNameInput.readOnly = true;
+      }
+
       // Update Visual Card with stored data
       cardVisual.classList.add('active');
       cardUidDisplay.textContent = currentCardData.holderName;
@@ -103,7 +111,7 @@ socket.on('card-status', async (data) => {
         </div>
         <div class="data-row">
             <span class="data-label">Status:</span>
-            <span class="data-value" style="color: #4ade80;">Active</span>
+            <span class="data-value" style="color: #10b981;">Active</span>
         </div>
       `;
 
@@ -112,47 +120,53 @@ socket.on('card-status', async (data) => {
       updateSystemStatus('db', true);
     } else {
       // New card - allow entering holder name
+      // Note: A 404 from the backend is EXPECTED here for new cards. It just means the card isn't in our database yet.
+      console.log('New card detected (404 expected)');
+
       currentCardData = null;
       holderNameInput.value = '';
       holderNameInput.readOnly = false;
       holderNameInput.focus();
-      
+      holderNameInput.focus();
+
+      const safeBalance = (typeof data.balance === 'number') ? data.balance : 0;
+
       cardVisual.classList.add('active');
-      cardUidDisplay.textContent = data.uid;
-      cardBalanceDisplay.textContent = `$${data.balance.toFixed(2)}`;
+      cardUidDisplay.textContent = data.uid || 'Unknown';
+      cardBalanceDisplay.textContent = `$${safeBalance.toFixed(2)}`;
 
       statusDisplay.innerHTML = `
         <div class="data-row">
             <span class="data-label">UID:</span>
-            <span class="data-value">${data.uid}</span>
+            <span class="data-value">${data.uid || 'Unknown'}</span>
         </div>
         <div class="data-row">
             <span class="data-label">Balance:</span>
-            <span class="data-value" style="color: #6366f1;">$${data.balance.toFixed(2)}</span>
+            <span class="data-value" style="color: #6366f1;">$${safeBalance.toFixed(2)}</span>
         </div>
         <div class="data-row">
             <span class="data-label">Status:</span>
-            <span class="data-value" style="color: #fbbf24;">New Card - Enter Name</span>
+            <span class="data-value" style="color: #d97706;">New Card - Enter Name</span>
         </div>
       `;
 
       // Clear transaction history for new cards
-      transactionHistory.innerHTML = '<p style="text-align: center; color: #94a3b8; padding: 20px;">No transactions yet</p>';
+      transactionHistory.innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">No transactions yet</p>';
     }
   } catch (err) {
     console.error('Failed to fetch card data:', err);
     updateSystemStatus('db', false);
-    
+
     // Fallback to basic display
     currentCardData = null;
     holderNameInput.value = '';
     holderNameInput.readOnly = false;
-    
+
     cardVisual.classList.add('active');
     cardUidDisplay.textContent = data.uid;
     cardBalanceDisplay.textContent = `$${data.balance.toFixed(2)}`;
-    
-    transactionHistory.innerHTML = '<p style="text-align: center; color: #ef4444; padding: 20px;">Failed to load transactions</p>';
+
+    transactionHistory.innerHTML = '<p style="text-align: center; color: #dc2626; padding: 20px;">Failed to load transactions</p>';
   }
 });
 
@@ -160,7 +174,7 @@ socket.on('card-balance', (data) => {
   // Update Visual Card if this card is still active
   if (data.uid === lastScannedUid) {
     cardBalanceDisplay.textContent = `$${data.new_balance.toFixed(2)}`;
-    
+
     // Update current card data
     if (currentCardData) {
       currentCardData.balance = data.new_balance;
@@ -184,15 +198,15 @@ socket.on('card-balance', (data) => {
 topupBtn.addEventListener('click', async () => {
   const amount = parseFloat(amountInput.value);
   const holderName = holderNameInput.value.trim();
-  
+
   if (isNaN(amount) || amount <= 0) {
     alert('Please enter a valid amount');
     return;
   }
 
-  // Check if holder name is required (new card)
-  if (!currentCardData && !holderName) {
-    alert('Please enter the card holder name for new cards');
+  // Check if holder name is required (new card or "New User" update)
+  if ((!currentCardData || currentCardData.holderName === 'New User') && !holderName) {
+    alert('Please enter a name for this card');
     holderNameInput.focus();
     return;
   }
@@ -202,9 +216,9 @@ topupBtn.addEventListener('click', async () => {
       uid: lastScannedUid,
       amount: amount
     };
-    
-    // Include holder name for new cards
-    if (!currentCardData && holderName) {
+
+    // Include holder name for new cards OR renaming "New User"
+    if ((!currentCardData || currentCardData.holderName === 'New User') && holderName) {
       requestBody.holderName = holderName;
     }
 
@@ -222,30 +236,33 @@ topupBtn.addEventListener('click', async () => {
       currentCardData = result.card;
       holderNameInput.value = result.card.holderName;
       holderNameInput.readOnly = true;
-      
+
       // Update display
       cardUidDisplay.textContent = result.card.holderName;
       cardBalanceDisplay.textContent = `$${result.card.balance.toFixed(2)}`;
-      
+
       amountInput.value = '';
 
       // Reload transaction history and stats
       await loadTransactionHistory(lastScannedUid);
       await loadStats();
     } else {
+      console.error(`Topup error: ${result.error}`);
       alert(`Error: ${result.error}`);
     }
   } catch (err) {
     console.error('Failed to connect to backend for top-up:', err);
-    alert('Failed to connect to backend');
+    // Suppress aggressive alert for connection errors, just log it
+    // alert('Failed to connect to backend');
+    updateSystemStatus('backend', false);
   }
 });
 
 // System status update function
 function updateSystemStatus(system, isOnline) {
   let statusDot, statusText;
-  
-  switch(system) {
+
+  switch (system) {
     case 'mqtt':
       statusDot = mqttStatus;
       statusText = mqttStatusText;
@@ -262,7 +279,7 @@ function updateSystemStatus(system, isOnline) {
       statusText.textContent = isOnline ? 'Connected' : 'Error';
       break;
   }
-  
+
   if (statusDot) {
     statusDot.className = 'status-dot ' + (isOnline ? 'online' : 'offline');
   }
@@ -276,22 +293,22 @@ async function loadStats() {
     if (cardsResponse.ok) {
       const cards = await cardsResponse.json();
       totalCardsEl.textContent = cards.length;
-      
+
       // Calculate total volume
       const totalVolume = cards.reduce((sum, card) => sum + card.balance, 0);
       totalVolumeEl.textContent = `$${totalVolume.toFixed(2)}`;
     }
-    
+
     // Get today's transactions
     const transactionsResponse = await fetch(`${BACKEND_URL}/transactions?limit=1000`);
     if (transactionsResponse.ok) {
       const transactions = await transactionsResponse.json();
       const today = new Date().toDateString();
-      const todayTransactions = transactions.filter(tx => 
+      const todayTransactions = transactions.filter(tx =>
         new Date(tx.timestamp).toDateString() === today
       );
       todayTransactionsEl.textContent = todayTransactions.length;
-      
+
       // Calculate average transaction
       if (transactions.length > 0) {
         const totalAmount = transactions.reduce((sum, tx) => sum + tx.amount, 0);
@@ -301,7 +318,7 @@ async function loadStats() {
         avgTransactionEl.textContent = '$0.00';
       }
     }
-    
+
     updateSystemStatus('db', true);
   } catch (err) {
     console.error('Failed to load stats:', err);
@@ -318,9 +335,9 @@ async function loadTransactionHistory(uid) {
     }
 
     const transactions = await response.json();
-    
+
     if (transactions.length === 0) {
-      transactionHistory.innerHTML = '<p style="text-align: center; color: #94a3b8; padding: 20px;">No transactions yet</p>';
+      transactionHistory.innerHTML = '<p style="text-align: center; color: #64748b; padding: 20px;">No transactions yet</p>';
       return;
     }
 
@@ -332,7 +349,7 @@ async function loadTransactionHistory(uid) {
       const timeStr = date.toLocaleTimeString();
       const typeClass = tx.type === 'topup' ? 'topup' : 'debit';
       const typeIcon = tx.type === 'topup' ? '↑' : '↓';
-      
+
       html += `
         <div class="transaction-item ${typeClass}">
           <div class="transaction-icon">${typeIcon}</div>
@@ -350,7 +367,7 @@ async function loadTransactionHistory(uid) {
       `;
     });
     html += '</div>';
-    
+
     transactionHistory.innerHTML = html;
   } catch (err) {
     console.error('Failed to load transaction history:', err);
