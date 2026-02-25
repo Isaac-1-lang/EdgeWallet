@@ -174,8 +174,19 @@ async function runWalletTransaction(operationName, fn) {
     return result;
   } catch (err) {
     console.error(`Wallet ${operationName} transaction failed:`, err.message || err);
-    // If transactions are not supported, we fail the request instead of doing
-    // partially safe updates across collections.
+
+    // Business-rule errors (e.g. insufficient funds, missing product/card)
+    // should propagate so the HTTP layer can return a proper 4xx with message.
+    if (
+      err.code === 'INSUFFICIENT_FUNDS' ||
+      err.code === 'PRODUCT_NOT_FOUND' ||
+      err.code === 'CARD_NOT_FOUND'
+    ) {
+      throw err;
+    }
+
+    // For infrastructure/transaction issues, we fail the request instead of
+    // performing any partial updates across collections.
     throw new Error(
       `Wallet ${operationName} failed. Ensure MongoDB transactions are supported (replica set).`
     );
