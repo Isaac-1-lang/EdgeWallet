@@ -6,14 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="EdgeWallet - RFID Payment System Dashboard">
   <title>EdgeWallet - RFID Payment Dashboard</title>
-  
+
   <!-- Stylesheets -->
   <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
-  
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
   <!-- Icons -->
   <script src="https://unpkg.com/feather-icons"></script>
-  
+
   <!-- Scripts -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="config.js"></script>
@@ -21,12 +21,12 @@
 
 <body>
   <div class="dashboard">
-    
+
     <!-- ============================================ -->
     <!-- SIDEBAR NAVIGATION -->
     <!-- ============================================ -->
     <aside class="sidebar">
-      
+
       <!-- Sidebar Header -->
       <div class="sidebar-header">
         <div class="sidebar-title-row">
@@ -46,20 +46,26 @@
           <span class="nav-icon" aria-hidden="true">
             <i data-feather="credit-card"></i>
           </span>
-          <span class="nav-text">Admin – Top-Up</span>
+          <span class="nav-text">Admin Portal</span>
         </a>
-        <a href="#cashier" class="nav-item" data-view="cashier">
+        <a href="#marketplace" class="nav-item" data-view="marketplace">
           <span class="nav-icon" aria-hidden="true">
             <i data-feather="shopping-bag"></i>
           </span>
-          <span class="nav-text">Cashier – Payment</span>
+          <span class="nav-text">Marketplace</span>
+        </a>
+        <a href="#cashier" class="nav-item" data-view="cashier">
+          <span class="nav-icon" aria-hidden="true">
+            <i data-feather="shopping-cart"></i>
+          </span>
+          <span class="nav-text">Cashier Portal</span>
         </a>
       </nav>
 
       <!-- System Status Monitor -->
       <div class="system-status">
         <h3>System Status</h3>
-        
+
         <div class="status-item">
           <div class="status-label">
             <span class="status-dot" id="mqtt-status" aria-hidden="true"></span>
@@ -67,7 +73,7 @@
           </div>
           <div class="status-value" id="mqtt-status-text">Connecting...</div>
         </div>
-        
+
         <div class="status-item">
           <div class="status-label">
             <span class="status-dot" id="backend-status" aria-hidden="true"></span>
@@ -75,7 +81,7 @@
           </div>
           <div class="status-value" id="backend-status-text">Connecting...</div>
         </div>
-        
+
         <div class="status-item">
           <div class="status-label">
             <span class="status-dot" id="db-status" aria-hidden="true"></span>
@@ -96,17 +102,17 @@
           <span class="uptime-value" id="uptime">00:00:00</span>
         </div>
       </div>
-      
+
     </aside>
 
     <!-- ============================================ -->
     <!-- MAIN CONTENT AREA -->
     <!-- ============================================ -->
     <main class="main-content" role="main">
-      
+
       <!-- Quick Statistics Grid (shared) -->
       <section class="stats-grid" aria-label="Quick statistics">
-        
+
         <div class="stat-card-main">
           <div class="stat-icon stat-icon-purple" aria-hidden="true">
             <i data-feather="credit-card"></i>
@@ -116,7 +122,7 @@
             <div class="stat-value" id="total-cards">0</div>
           </div>
         </div>
-        
+
         <div class="stat-card-main">
           <div class="stat-icon stat-icon-blue" aria-hidden="true">
             <i data-feather="activity"></i>
@@ -126,7 +132,7 @@
             <div class="stat-value" id="today-transactions">0</div>
           </div>
         </div>
-        
+
         <div class="stat-card-main">
           <div class="stat-icon stat-icon-green" aria-hidden="true">
             <i data-feather="dollar-sign"></i>
@@ -136,7 +142,7 @@
             <div class="stat-value" id="total-volume">$0.00</div>
           </div>
         </div>
-        
+
         <div class="stat-card-main">
           <div class="stat-icon stat-icon-orange" aria-hidden="true">
             <i data-feather="zap"></i>
@@ -146,23 +152,36 @@
             <div class="stat-value" id="avg-transaction">$0.00</div>
           </div>
         </div>
-        
+
       </section>
 
       <!-- ============================================ -->
       <!-- ADMIN VIEW (TOP-UP) -->
       <!-- ============================================ -->
       <div id="admin-view" class="content-grid">
-        
-        <!-- ACTIVE CARD SECTION -->
+
+        <!-- ACTIVE CARD SECTION with Mastercard -->
         <section class="glass-card card-status-section" aria-labelledby="active-card-heading">
           <h3 id="active-card-heading">Active Card</h3>
-          
-          <!-- Visual Card Display -->
+
+          <!-- Mastercard-style Visual Card -->
           <div class="card-visual-container">
             <div id="card-visual" class="card-visual" role="img" aria-label="RFID card visualization">
-              <div class="card-chip" aria-hidden="true"></div>
-              <div class="card-number" aria-label="Card number">**** **** **** ****</div>
+
+              <!-- Top row: chip + contactless -->
+              <div class="card-top-row">
+                <div class="card-chip"></div>
+                <div class="card-contactless">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+
+              <!-- Card number -->
+              <div class="card-number">**** **** **** ****</div>
+
+              <!-- Bottom row: holder + balance + brand -->
               <div class="card-details">
                 <div class="card-holder-group">
                   <span class="card-label">CARD HOLDER</span>
@@ -172,10 +191,16 @@
                   <span class="card-label">BALANCE</span>
                   <span id="card-balance-display" class="card-value">$0.00</span>
                 </div>
+                <div class="card-brand">
+                  <div class="mc-circles">
+                    <div class="circle"></div>
+                    <div class="circle"></div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-          
+
           <!-- Card Status Information -->
           <div id="status-display" class="status-content">
             <div class="status-placeholder">
@@ -187,111 +212,133 @@
         <!-- TOP UP SECTION -->
         <section class="glass-card topup-section" aria-labelledby="topup-heading">
           <h3 id="topup-heading">Top Up Card</h3>
-          
+
           <form id="topup-form" aria-label="Card top-up form">
-            
+
             <div class="input-group">
               <label for="uid">Card UID</label>
-              <input 
-                type="text" 
-                id="uid" 
-                name="uid"
-                placeholder="UID auto-populated" 
-                readonly
-                aria-describedby="uid-help"
-              >
+              <input type="text" id="uid" name="uid" placeholder="UID auto-populated" readonly
+                aria-describedby="uid-help">
               <small id="uid-help" class="input-help" style="display:none;">
                 Card UID will be auto-populated when a card is scanned
               </small>
             </div>
-            
+
             <div class="input-group">
               <label for="holderName">Card Holder Name</label>
-              <input 
-                type="text" 
-                id="holderName" 
-                name="holderName"
-                placeholder="Enter name for new cards"
-                autocomplete="name"
-                aria-describedby="name-help"
-              >
+              <input type="text" id="holderName" name="holderName" placeholder="Enter name for new cards"
+                autocomplete="name" aria-describedby="name-help">
               <small id="name-help" class="input-help" style="display:none;">
                 Required for new cards, auto-filled for existing cards
               </small>
             </div>
-            
+
             <div class="input-group">
               <label for="amount">Amount ($)</label>
-              <input 
-                type="number" 
-                id="amount" 
-                name="amount"
-                placeholder="0.00" 
-                step="0.01"
-                min="0.01"
-                aria-describedby="amount-help"
-              >
+              <input type="number" id="amount" name="amount" placeholder="0.00" step="0.01" min="0.01"
+                aria-describedby="amount-help">
               <small id="amount-help" class="input-help" style="display:none;">
                 Enter the amount to add to the card balance
               </small>
             </div>
-            
-            <button 
-              type="submit"
-              id="topup-btn" 
-              disabled
-              aria-label="Confirm top-up transaction"
-            >
+
+            <button type="submit" id="topup-btn" disabled aria-label="Confirm top-up transaction">
               Confirm Top Up
             </button>
-            
+
           </form>
         </section>
 
         <!-- TRANSACTION HISTORY SECTION -->
         <section class="glass-card transaction-section" aria-labelledby="transaction-heading">
           <h3 id="transaction-heading">Transaction History</h3>
-          
-          <div 
-            id="transaction-history" 
-            class="transaction-list"
-            role="list"
-            aria-label="Transaction history list"
-            aria-live="polite"
-          >
-            <!-- Transactions will be dynamically inserted here -->
+
+          <div id="transaction-history" class="transaction-list" role="list" aria-label="Transaction history list"
+            aria-live="polite">
             <div class="status-placeholder">
               No transactions yet
             </div>
           </div>
         </section>
-        
+
       </div>
 
       <!-- ============================================ -->
-      <!-- CASHIER VIEW (PAYMENT) -->
+      <!-- MARKETPLACE VIEW -->
+      <!-- ============================================ -->
+      <div id="marketplace-view" class="marketplace-view">
+
+        <!-- Products area -->
+        <div class="marketplace-main">
+          <div class="glass-card">
+            <h3>🛒 Marketplace</h3>
+
+            <!-- Category filtration tabs -->
+            <div class="category-tabs" id="category-tabs">
+              <button class="category-tab active" data-category="all">All</button>
+            </div>
+
+            <!-- Product grid -->
+            <div class="marketplace-products" id="marketplace-products">
+              <div class="status-placeholder">Loading products...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cart sidebar -->
+        <div class="cart-section">
+          <div class="cart-header">
+            <h3>🛍️ Cart</h3>
+            <span class="cart-badge" id="cart-badge">0</span>
+          </div>
+
+          <!-- Card info -->
+          <div class="cart-card-info">
+            <span class="cart-card-dot" id="cart-card-dot"></span>
+            <span class="cart-card-text" id="cart-card-text">No card scanned</span>
+          </div>
+
+          <!-- Cart items -->
+          <div class="cart-items" id="cart-items">
+            <div class="cart-empty">
+              <span class="cart-empty-icon">🛒</span>
+              Add products to your cart
+            </div>
+          </div>
+
+          <!-- Cart footer -->
+          <div class="cart-footer">
+            <div class="cart-total">
+              <span class="cart-total-label">Total</span>
+              <span class="cart-total-value" id="cart-total">$0.00</span>
+            </div>
+            <button class="cart-pay-btn" id="cart-pay-btn" disabled>
+              Pay Now
+            </button>
+            <div id="marketplace-result"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ============================================ -->
+      <!-- CASHIER VIEW (QUICK PAY) -->
       <!-- ============================================ -->
       <div id="cashier-view" class="content-grid" style="display:none;">
-        
+
         <section class="glass-card topup-section" aria-labelledby="cashier-heading">
-          <h3 id="cashier-heading">Cashier – Payment</h3>
-          
+          <h3 id="cashier-heading">Cashier – Quick Pay</h3>
+
           <form id="cashier-form" aria-label="Cashier payment form">
-            
+
             <div class="input-group">
               <label for="cashier-uid">Card UID</label>
-              <input 
-                type="text" 
-                id="cashier-uid" 
-                name="cashier-uid"
-                placeholder="Scan card to autofill" 
-                readonly
-              >
+              <input type="text" id="cashier-uid" name="cashier-uid" placeholder="Scan card to autofill" readonly>
             </div>
 
             <div class="input-group">
               <label>Previous Balance</label>
-              <div id="cashier-previous-balance" class="data-value" style="color:#6366f1;">$0.00</div>
+              <div id="cashier-previous-balance" class="data-value">$0.00</div>
             </div>
 
             <div class="input-group">
@@ -303,41 +350,31 @@
 
             <div class="input-group">
               <label for="cashier-quantity">Quantity</label>
-              <input 
-                type="number" 
-                id="cashier-quantity" 
-                name="cashier-quantity"
-                value="1"
-                min="1"
-              >
+              <input type="number" id="cashier-quantity" name="cashier-quantity" value="1" min="1">
             </div>
 
             <div class="input-group">
               <label>Total</label>
-              <div id="cashier-total" class="data-value" style="color:#22c55e;">$0.00</div>
+              <div id="cashier-total" class="data-value">$0.00</div>
             </div>
 
-            <button 
-              type="submit"
-              id="cashier-pay-btn" 
-              disabled
-            >
+            <button type="submit" id="cashier-pay-btn" disabled>
               Pay
             </button>
 
             <div id="cashier-result" class="status-content" style="margin-top:16px;"></div>
-            
+
           </form>
         </section>
       </div>
-      
+
     </main>
-    
+
   </div>
 
   <!-- Main Application Script -->
   <script src="app.js"></script>
-  
+
   <!-- Initialize Feather Icons -->
   <script>
     feather.replace();
