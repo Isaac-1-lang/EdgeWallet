@@ -20,6 +20,15 @@
 </head>
 
 <body>
+  <!-- Interactive Particle Background -->
+  <canvas id="particle-canvas"></canvas>
+
+  <!-- Confetti Canvas -->
+  <canvas id="confetti-canvas"></canvas>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
   <div class="dashboard">
 
     <!-- ============================================ -->
@@ -110,6 +119,19 @@
     <!-- ============================================ -->
     <main class="main-content" role="main">
 
+      <!-- Live Activity Ticker -->
+      <div class="live-ticker" id="live-ticker">
+        <div class="ticker-label">
+          <span class="ticker-dot"></span>
+          LIVE
+        </div>
+        <div class="ticker-track">
+          <div class="ticker-content" id="ticker-content">
+            <span class="ticker-item">Waiting for activity...</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Quick Statistics Grid (shared) -->
       <section class="stats-grid" aria-label="Quick statistics">
 
@@ -164,38 +186,56 @@
         <section class="glass-card card-status-section" aria-labelledby="active-card-heading">
           <h3 id="active-card-heading">Active Card</h3>
 
-          <!-- Mastercard-style Visual Card -->
+          <!-- Mastercard-style Visual Card (Flippable) -->
           <div class="card-visual-container">
-            <div id="card-visual" class="card-visual" role="img" aria-label="RFID card visualization">
+            <div class="card-flipper" id="card-flipper">
+              <!-- FRONT SIDE -->
+              <div id="card-visual" class="card-visual card-front" role="img" aria-label="RFID card visualization">
 
-              <!-- Top row: chip + contactless -->
-              <div class="card-top-row">
-                <div class="card-chip"></div>
-                <div class="card-contactless">
-                  <span></span>
-                  <span></span>
-                  <span></span>
+                <!-- Top row: chip + contactless -->
+                <div class="card-top-row">
+                  <div class="card-chip"></div>
+                  <div class="card-contactless">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+
+                <!-- Card number -->
+                <div class="card-number">**** **** **** ****</div>
+
+                <!-- Bottom row: holder + balance + brand -->
+                <div class="card-details">
+                  <div class="card-holder-group">
+                    <span class="card-label">CARD HOLDER</span>
+                    <span id="card-uid-display" class="card-value">NO CARD</span>
+                  </div>
+                  <div class="card-balance-group">
+                    <span class="card-label">BALANCE</span>
+                    <span id="card-balance-display" class="card-value">$0.00</span>
+                  </div>
+                  <div class="card-brand">
+                    <div class="mc-circles">
+                      <div class="circle"></div>
+                      <div class="circle"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <!-- Card number -->
-              <div class="card-number">**** **** **** ****</div>
-
-              <!-- Bottom row: holder + balance + brand -->
-              <div class="card-details">
-                <div class="card-holder-group">
-                  <span class="card-label">CARD HOLDER</span>
-                  <span id="card-uid-display" class="card-value">NO CARD</span>
-                </div>
-                <div class="card-balance-group">
-                  <span class="card-label">BALANCE</span>
-                  <span id="card-balance-display" class="card-value">$0.00</span>
-                </div>
-                <div class="card-brand">
-                  <div class="mc-circles">
-                    <div class="circle"></div>
-                    <div class="circle"></div>
+              <!-- BACK SIDE -->
+              <div class="card-visual card-back">
+                <div class="card-back-stripe"></div>
+                <div class="card-back-content">
+                  <div class="card-back-title">Recent Activity</div>
+                  <div class="card-back-transactions" id="card-back-transactions">
+                    <div class="card-back-empty">No transactions yet</div>
                   </div>
+                </div>
+                <div class="card-back-footer">
+                  <span class="card-back-brand">Edge<span>Wallet</span></span>
+                  <span class="card-back-rfid">RFID • NFC</span>
                 </div>
               </div>
             </div>
