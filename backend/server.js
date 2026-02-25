@@ -75,6 +75,8 @@ const Transaction = mongoose.model('Transaction', transactionSchema, 'transactio
 const productSchema = new mongoose.Schema({
   name: { type: String, required: true },
   price: { type: Number, required: true },
+  category: { type: String, default: 'General' },
+  emoji: { type: String, default: '📦' },
   active: { type: Boolean, default: true }
 });
 
@@ -144,9 +146,32 @@ async function seedProducts() {
     }
 
     const demoProducts = [
-      { name: 'Water', price: 500, active: true },
-      { name: 'Bread', price: 800, active: true },
-      { name: 'Notebook', price: 1500, active: true }
+      // Food & Drinks
+      { name: 'Water Bottle', price: 500, category: 'Food & Drinks', emoji: '💧', active: true },
+      { name: 'Orange Juice', price: 800, category: 'Food & Drinks', emoji: '🍊', active: true },
+      { name: 'Sandwich', price: 1200, category: 'Food & Drinks', emoji: '🥪', active: true },
+      { name: 'Coffee', price: 700, category: 'Food & Drinks', emoji: '☕', active: true },
+      { name: 'Energy Drink', price: 1000, category: 'Food & Drinks', emoji: '⚡', active: true },
+      { name: 'Fruit Salad', price: 900, category: 'Food & Drinks', emoji: '🥗', active: true },
+      // Snacks
+      { name: 'Chocolate Bar', price: 400, category: 'Snacks', emoji: '🍫', active: true },
+      { name: 'Cookies Pack', price: 600, category: 'Snacks', emoji: '🍪', active: true },
+      { name: 'Popcorn', price: 500, category: 'Snacks', emoji: '🍿', active: true },
+      { name: 'Granola Bar', price: 450, category: 'Snacks', emoji: '🥜', active: true },
+      { name: 'Chips', price: 550, category: 'Snacks', emoji: '🥔', active: true },
+      // Stationery
+      { name: 'Notebook', price: 1500, category: 'Stationery', emoji: '📓', active: true },
+      { name: 'Pen Set', price: 800, category: 'Stationery', emoji: '🖊️', active: true },
+      { name: 'Highlighters', price: 650, category: 'Stationery', emoji: '🖍️', active: true },
+      { name: 'Ruler', price: 300, category: 'Stationery', emoji: '📏', active: true },
+      // Electronics
+      { name: 'USB Cable', price: 2000, category: 'Electronics', emoji: '🔌', active: true },
+      { name: 'Earbuds', price: 3500, category: 'Electronics', emoji: '🎧', active: true },
+      { name: 'Phone Charger', price: 2500, category: 'Electronics', emoji: '🔋', active: true },
+      // Personal Care
+      { name: 'Hand Sanitizer', price: 600, category: 'Personal Care', emoji: '🧴', active: true },
+      { name: 'Tissues', price: 350, category: 'Personal Care', emoji: '🧻', active: true },
+      { name: 'Lip Balm', price: 400, category: 'Personal Care', emoji: '💄', active: true }
     ];
 
     await Product.insertMany(demoProducts);
@@ -175,6 +200,22 @@ async function runWalletTransaction(operationName, fn) {
   } catch (err) {
     console.error(`Wallet ${operationName} transaction failed:`, err.message || err);
 
+    // If this MongoDB deployment doesn't support transactions (e.g. standalone),
+    // gracefully fall back to a non-transactional execution so local development
+    // still works. For full all-or-nothing guarantees, a replica set is required.
+    if (
+      typeof err.message === 'string' &&
+      err.message.includes('Transaction numbers are only allowed on a replica set member or mongos')
+    ) {
+      console.warn(
+        `MongoDB deployment does not support transactions. Running wallet ${operationName} without a transaction. ` +
+          'For strict all-or-nothing guarantees, use a replica set (e.g. MongoDB Atlas cluster).'
+      );
+      // Run the operation without a session; individual operations will still be
+      // consistent, but cross-collection atomicity is not guaranteed.
+      return await fn(null);
+    }
+
     // Business-rule errors (e.g. insufficient funds, missing product/card)
     // should propagate so the HTTP layer can return a proper 4xx with message.
     if (
@@ -202,7 +243,11 @@ async function runWalletTransaction(operationName, fn) {
 async function performTopup({ cardUid, amount, holderName }) {
   return runWalletTransaction('TOPUP', async (session) => {
     // Find or create card within the transaction
-    let card = await Card.findOne({ uid: cardUid }).session(session);
+    let query = Card.findOne({ uid: cardUid });
+    if (session) {
+      query = query.session(session);
+    }
+    let card = await query;
     const balanceBefore = card ? card.balance : 0;
 
     if (!card) {
@@ -225,7 +270,8 @@ async function performTopup({ cardUid, amount, holderName }) {
       }
     }
 
-    await card.save({ session });
+    const saveOptions = session ? { session } : undefined;
+    await card.save(saveOptions);
 
     const transaction = await new Transaction({
       card_uid: card.uid,
@@ -235,7 +281,7 @@ async function performTopup({ cardUid, amount, holderName }) {
       balanceBefore,
       balanceAfter: card.balance,
       description: `Top-up of ${amount}`
-    }).save({ session });
+    }).save(saveOptions);
 
     return { card, transaction, balanceBefore };
   });
@@ -257,7 +303,11 @@ async function performPayment({ cardUid, productId, quantity }) {
 
     const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 1;
 
-    const product = await Product.findOne({ _id: productId, active: true }).session(session);
+    let productQuery = Product.findOne({ _id: productId, active: true });
+    if (session) {
+      productQuery = productQuery.session(session);
+    }
+    const product = await productQuery;
     if (!product) {
       const error = new Error('Product not found or inactive');
       error.code = 'PRODUCT_NOT_FOUND';
@@ -266,7 +316,11 @@ async function performPayment({ cardUid, productId, quantity }) {
 
     const totalAmount = product.price * safeQuantity;
 
-    const card = await Card.findOne({ uid: cardUid }).session(session);
+    let cardQuery = Card.findOne({ uid: cardUid });
+    if (session) {
+      cardQuery = cardQuery.session(session);
+    }
+    const card = await cardQuery;
     if (!card) {
       const error = new Error('Card not found');
       error.code = 'CARD_NOT_FOUND';
@@ -283,7 +337,8 @@ async function performPayment({ cardUid, productId, quantity }) {
 
     card.balance -= totalAmount;
     card.updatedAt = Date.now();
-    await card.save({ session });
+    const saveOptions = session ? { session } : undefined;
+    await card.save(saveOptions);
 
     const transaction = await new Transaction({
       card_uid: card.uid,
@@ -295,7 +350,7 @@ async function performPayment({ cardUid, productId, quantity }) {
       productId: product._id,
       productName: product.name,
       description: `Payment for ${product.name} x${safeQuantity}`
-    }).save({ session });
+    }).save(saveOptions);
 
     return {
       card,
