@@ -5,8 +5,8 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-const char* ssid = "EdNet";
-const char* password = "Huawei@123";
+const char* ssid = "RCA";
+const char* password = "@RcaNyabihu2023";
 const uint32_t WIFI_TIMEOUT_MS = 30000;
 
 // ----------------- MQTT Configuration -----------------
@@ -14,12 +14,12 @@ const char* mqtt_server = "broker.benax.rw";
 const uint16_t MQTT_PORT = 1883;
 const char* team_id = "quantum_bitflip_0xDEAD";
 
-// ----------------- MQTT Topics -----------------
-String topic_status= "rfid/" + String(team_id) + "/card/status";
+// ----------------- MQTT Topics (strict set) -----------------
+// NOTE: Assignment requires using only these four topics.
+String topic_status = "rfid/" + String(team_id) + "/card/status";
 String topic_balance = "rfid/" + String(team_id) + "/card/balance";
 String topic_topup = "rfid/" + String(team_id) + "/card/topup";
-String topic_health = "rfid/" + String(team_id) + "/device/health";
-String topic_lwt= "rfid/" + String(team_id) + "/device/status";
+String topic_pay = "rfid/" + String(team_id) + "/card/pay";
 
 // ----------------- Pin Mapping -----------------
 #define RST_PIN D3
@@ -28,10 +28,6 @@ String topic_lwt= "rfid/" + String(team_id) + "/device/status";
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 WiFiClient espClient;
 PubSubClient client(espClient);
-
-// ----------------- Health Report -----------------
-unsigned long last_health_report = 0;
-const unsigned long HEALTH_INTERVAL = 60000; // 60 seconds
 
 // ----------------- Time Functions -----------------
 void sync_time() {
@@ -83,28 +79,39 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("] ");
 
   StaticJsonDocument<256> doc;
-  deserializeJson(doc, payload, length);
+  DeserializationError err = deserializeJson(doc, payload, length);
+  if (err) {
+    Serial.print("Failed to parse MQTT JSON: ");
+    Serial.println(err.c_str());
+    return;
+  }
 
-const char* uid = doc["uid"];
-float amount = doc["amount"];
+  String incomingTopic = String(topic);
 
-float simulatedOldBalance = 0;
-float newBalance = simulatedOldBalance + amount;
+  const char* uid = doc["uid"] | doc["card_uid"];
+  float amount = doc["amount"] | 0;
+  float newBalanceFromBackend = doc["newBalance"] | 0;
 
-StaticJsonDocument<200> responseDoc;
-responseDoc["uid"] = uid;
-responseDoc["new_balance"] = newBalance;
-responseDoc["status"] = "success";
-responseDoc["ts"] = get_unix_time();
+  // The backend is the source of truth for wallet balance. The ESP simply
+  // acknowledges commands and relays the new balance back on /card/balance.
+  float newBalance = newBalanceFromBackend;
 
-char buffer[200];
-serializeJson(responseDoc, buffer);
-client.publish(topic_balance.c_str(), buffer);
+  StaticJsonDocument<200> responseDoc;
+  responseDoc["uid"] = uid;
+  responseDoc["new_balance"] = newBalance;
+  responseDoc["status"] = "success";
+  responseDoc["ts"] = get_unix_time();
 
-Serial.print("Updated balance for ");
-Serial.print(uid);
-Serial.print(": ");
-Serial.println(newBalance);
+  char buffer[200];
+  serializeJson(responseDoc, buffer);
+  client.publish(topic_balance.c_str(), buffer);
+
+  Serial.print("Applied command on topic ");
+  Serial.print(incomingTopic);
+  Serial.print(" for UID ");
+  Serial.print(uid);
+  Serial.print(" | New balance: ");
+  Serial.println(newBalance);
 }
 
 // ----------------- MQTT Reconnect -----------------
@@ -114,13 +121,11 @@ Serial.print("Attempting MQTT connection...");
 
 String clientId = "ESP8266_Shield_" + String(ESP.getChipId(), HEX);
 
-if (client.connect(clientId.c_str(), topic_lwt.c_str(), 1, true, "offline")) {
+if (client.connect(clientId.c_str())) {
 Serial.println("connected");
 
-client.publish(topic_lwt.c_str(), "online", true);
-
 client.subscribe(topic_topup.c_str());
-client.subscribe(topic_health.c_str());
+client.subscribe(topic_pay.c_str());
 } else {
 Serial.print("failed, rc=");
 Serial.print(client.state());
@@ -128,21 +133,6 @@ Serial.println(" try again in 5 seconds");
 delay(5000);
 }
 }
-}
-
-// ----------------- Health Reporting -----------------
-void publish_health() {
-StaticJsonDocument<256> doc;
-doc["status"] = "online";
-doc["ip"] = WiFi.localIP().toString();
-doc["rssi"] = WiFi.RSSI();
-doc["free_heap"] = ESP.getFreeHeap();
-doc["ts"] = get_unix_time();
-
-char buffer[256];
-serializeJson(doc, buffer);
-client.publish(topic_health.c_str(), buffer);
-Serial.println("Health report published");
 }
 
 // ----------------- Setup -----------------
@@ -170,13 +160,6 @@ if (!client.connected()) {
 reconnect();
 }
 client.loop();
-
-unsigned long now = millis();
-if (now - last_health_report > HEALTH_INTERVAL) {
-last_health_report = now;
-publish_health();
-}
-
 
 if (mfrc522.PICC_IsNewCardPresent() && mfrc522.PICC_ReadCardSerial()) {
 

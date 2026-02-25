@@ -8,7 +8,7 @@ A complete RFID-based payment system featuring real-time card management, transa
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 - [Features](#-features)
 - [System Architecture](#-system-architecture)
@@ -22,7 +22,7 @@ A complete RFID-based payment system featuring real-time card management, transa
 
 ---
 
-## ✨ Features
+##  Features
 
 ### Core Functionality
 - **Real-time RFID Detection** - Instant card recognition via MQTT
@@ -39,7 +39,7 @@ A complete RFID-based payment system featuring real-time card management, transa
 
 ---
 
-## 🏗️ System Architecture
+##  System Architecture
 
 ### Team Information
 | Component | Value |
@@ -59,7 +59,7 @@ A complete RFID-based payment system featuring real-time card management, transa
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Local Development
 
@@ -104,7 +104,7 @@ npm start
 
 ---
 
-## 🔌 Hardware Setup
+##  Hardware Setup
 
 ### Pin Connections
 
@@ -170,7 +170,7 @@ No manual configuration required! The system detects whether you're running loca
 
 ---
 
-## 📡 API Reference
+##  API Reference
 
 ### REST Endpoints
 

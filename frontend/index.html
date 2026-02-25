@@ -42,23 +42,17 @@
 
       <!-- Navigation Menu -->
       <nav class="sidebar-nav" role="navigation" aria-label="Main navigation">
-        <a href="#cards" class="nav-item active" aria-current="page">
+        <a href="#admin" class="nav-item active" aria-current="page" data-view="admin">
           <span class="nav-icon" aria-hidden="true">
             <i data-feather="credit-card"></i>
           </span>
-          <span class="nav-text">Cards</span>
+          <span class="nav-text">Admin – Top-Up</span>
         </a>
-        <a href="#analytics" class="nav-item">
+        <a href="#cashier" class="nav-item" data-view="cashier">
           <span class="nav-icon" aria-hidden="true">
-            <i data-feather="bar-chart-2"></i>
+            <i data-feather="shopping-bag"></i>
           </span>
-          <span class="nav-text">Analytics</span>
-        </a>
-        <a href="#settings" class="nav-item">
-          <span class="nav-icon" aria-hidden="true">
-            <i data-feather="settings"></i>
-          </span>
-          <span class="nav-text">Settings</span>
+          <span class="nav-text">Cashier – Payment</span>
         </a>
       </nav>
 
@@ -110,7 +104,7 @@
     <!-- ============================================ -->
     <main class="main-content" role="main">
       
-      <!-- Quick Statistics Grid -->
+      <!-- Quick Statistics Grid (shared) -->
       <section class="stats-grid" aria-label="Quick statistics">
         
         <div class="stat-card-main">
@@ -155,12 +149,12 @@
         
       </section>
 
-      <!-- Main Content Grid -->
-      <div class="content-grid">
+      <!-- ============================================ -->
+      <!-- ADMIN VIEW (TOP-UP) -->
+      <!-- ============================================ -->
+      <div id="admin-view" class="content-grid">
         
-        <!-- ============================================ -->
         <!-- ACTIVE CARD SECTION -->
-        <!-- ============================================ -->
         <section class="glass-card card-status-section" aria-labelledby="active-card-heading">
           <h3 id="active-card-heading">Active Card</h3>
           
@@ -190,9 +184,7 @@
           </div>
         </section>
 
-        <!-- ============================================ -->
         <!-- TOP UP SECTION -->
-        <!-- ============================================ -->
         <section class="glass-card topup-section" aria-labelledby="topup-heading">
           <h3 id="topup-heading">Top Up Card</h3>
           
@@ -256,9 +248,7 @@
           </form>
         </section>
 
-        <!-- ============================================ -->
         <!-- TRANSACTION HISTORY SECTION -->
-        <!-- ============================================ -->
         <section class="glass-card transaction-section" aria-labelledby="transaction-heading">
           <h3 id="transaction-heading">Transaction History</h3>
           
@@ -276,6 +266,69 @@
           </div>
         </section>
         
+      </div>
+
+      <!-- ============================================ -->
+      <!-- CASHIER VIEW (PAYMENT) -->
+      <!-- ============================================ -->
+      <div id="cashier-view" class="content-grid" style="display:none;">
+        
+        <section class="glass-card topup-section" aria-labelledby="cashier-heading">
+          <h3 id="cashier-heading">Cashier – Payment</h3>
+          
+          <form id="cashier-form" aria-label="Cashier payment form">
+            
+            <div class="input-group">
+              <label for="cashier-uid">Card UID</label>
+              <input 
+                type="text" 
+                id="cashier-uid" 
+                name="cashier-uid"
+                placeholder="Scan card to autofill" 
+                readonly
+              >
+            </div>
+
+            <div class="input-group">
+              <label>Previous Balance</label>
+              <div id="cashier-previous-balance" class="data-value" style="color:#6366f1;">$0.00</div>
+            </div>
+
+            <div class="input-group">
+              <label for="cashier-product">Product</label>
+              <select id="cashier-product" name="cashier-product">
+                <option value="">Select a product</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label for="cashier-quantity">Quantity</label>
+              <input 
+                type="number" 
+                id="cashier-quantity" 
+                name="cashier-quantity"
+                value="1"
+                min="1"
+              >
+            </div>
+
+            <div class="input-group">
+              <label>Total</label>
+              <div id="cashier-total" class="data-value" style="color:#22c55e;">$0.00</div>
+            </div>
+
+            <button 
+              type="submit"
+              id="cashier-pay-btn" 
+              disabled
+            >
+              Pay
+            </button>
+
+            <div id="cashier-result" class="status-content" style="margin-top:16px;"></div>
+            
+          </form>
+        </section>
       </div>
       
     </main>

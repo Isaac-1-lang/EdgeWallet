@@ -42,14 +42,14 @@ const cardSchema = new mongoose.Schema({
 });
 
 // Ensure we always keep card_uid and uid in sync.
-cardSchema.pre('validate', function (next) {
+// In Mongoose 9+, document middleware is promise-based, so we don't use `next`.
+cardSchema.pre('validate', function () {
   if (this.uid && !this.card_uid) {
     this.card_uid = this.uid;
   }
   if (this.card_uid && !this.uid) {
     this.uid = this.card_uid;
   }
-  next();
 });
 
 const Card = mongoose.model('Card', cardSchema, 'cards');
@@ -80,12 +80,11 @@ const productSchema = new mongoose.Schema({
 
 const Product = mongoose.model('Product', productSchema, 'products');
 
-// Topics
+// Strict MQTT topic set (no wildcards, no extra topics)
 const TOPIC_STATUS = `rfid/${TEAM_ID}/card/status`;
 const TOPIC_BALANCE = `rfid/${TEAM_ID}/card/balance`;
 const TOPIC_TOPUP = `rfid/${TEAM_ID}/card/topup`;
-const TOPIC_PAYMENT_REQUEST = `rfid/${TEAM_ID}/payment/request`;
-const TOPIC_PAYMENT_RESPONSE = `rfid/${TEAM_ID}/payment/response`;
+const TOPIC_PAY = `rfid/${TEAM_ID}/card/pay`;
 
 // MQTT Client Setup
 const mqttClient = mqtt.connect(MQTT_BROKER);
@@ -94,7 +93,6 @@ mqttClient.on('connect', () => {
   console.log('Connected to MQTT Broker');
   mqttClient.subscribe(TOPIC_STATUS);
   mqttClient.subscribe(TOPIC_BALANCE);
-  mqttClient.subscribe(TOPIC_PAYMENT_REQUEST);
 });
 
 mqttClient.on('message', async (topic, message) => {
@@ -126,33 +124,12 @@ mqttClient.on('message', async (topic, message) => {
         holderName: card.holderName,
         status: 'detected'
       });
-
     } else if (topic === TOPIC_BALANCE) {
+      // Card reports back the new balance after applying a command.
+      // We primarily use this as a device confirmation + UI update;
+      // the database remains the single source of truth via safe wallet updates.
       io.emit('card-balance', payload);
-    } else if (topic === TOPIC_PAYMENT_REQUEST) {
-      // Handle payment requests coming from MQTT
-      const { card_uid, product_id, amount } = payload;
-      // Re-use the same core payment logic as the HTTP endpoint via a helper
-      const result = await handlePayment({
-        cardUid: card_uid,
-        productId: product_id,
-        directAmount: amount
-      });
-
-      // Publish response on dedicated topic
-      mqttClient.publish(
-        TOPIC_PAYMENT_RESPONSE,
-        JSON.stringify({
-          card_uid,
-          product_id,
-          amount: result.amount,
-          product_name: result.productName || null,
-          status: result.status,
-          new_balance: result.newBalance ?? null,
-          message: result.message
-        })
-      );
-    }
+    } 
   } catch (err) {
     console.error('Failed to parse MQTT message or save card:', err);
   }
@@ -179,98 +156,144 @@ async function seedProducts() {
   }
 }
 
-// Core payment handler used by both HTTP and MQTT flows
-async function handlePayment({ cardUid, productId, directAmount }) {
-  if (!cardUid) {
-    return {
-      status: 'rejected',
-      message: 'card_uid is required'
-    };
-  }
+// ---------------- Wallet service with safe update pattern ----------------
 
-  let amountToCharge = directAmount;
-  let product = null;
+/**
+ * Runs a wallet operation (TOPUP or PAYMENT) inside a MongoDB transaction
+ * when available. If transactions are not supported (e.g. no replica set),
+ * the operation is aborted without partial writes to keep the wallet safe.
+ */
+async function runWalletTransaction(operationName, fn) {
+  const session = await mongoose.startSession();
+  let result;
 
-  if (productId) {
-    product = await Product.findOne({ _id: productId, active: true });
-    if (!product) {
-      return {
-        status: 'rejected',
-        message: 'Product not found or inactive'
-      };
-    }
-    amountToCharge = product.price;
-  }
-
-  if (amountToCharge === undefined || amountToCharge === null || amountToCharge <= 0) {
-    return {
-      status: 'rejected',
-      message: 'Invalid amount'
-    };
-  }
-
-  const card = await Card.findOne({ uid: cardUid });
-  if (!card) {
-    return {
-      status: 'rejected',
-      message: 'Card not found'
-    };
-  }
-
-  const balanceBefore = card.balance;
-
-  if (balanceBefore < amountToCharge) {
-    // Emit WebSocket event for rejected payment
-    io.emit('transaction-update', {
-      card_uid: card.uid,
-      operation_type: 'PAYMENT',
-      product_name: product ? product.name : null,
-      amount: amountToCharge,
-      new_balance: null,
-      status: 'rejected'
+  try {
+    await session.withTransaction(async () => {
+      result = await fn(session);
     });
+    return result;
+  } catch (err) {
+    console.error(`Wallet ${operationName} transaction failed:`, err.message || err);
+    // If transactions are not supported, we fail the request instead of doing
+    // partially safe updates across collections.
+    throw new Error(
+      `Wallet ${operationName} failed. Ensure MongoDB transactions are supported (replica set).`
+    );
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * Top-up operation used only by HTTP controller.
+ * Ensures card balance update and TOPUP ledger insert are all-or-nothing.
+ */
+async function performTopup({ cardUid, amount, holderName }) {
+  return runWalletTransaction('TOPUP', async (session) => {
+    // Find or create card within the transaction
+    let card = await Card.findOne({ uid: cardUid }).session(session);
+    const balanceBefore = card ? card.balance : 0;
+
+    if (!card) {
+      if (!holderName) {
+        throw new Error('Holder name is required for new cards');
+      }
+      card = new Card({
+        uid: cardUid,
+        holderName,
+        balance: amount,
+        lastTopup: amount
+      });
+    } else {
+      card.balance += amount;
+      card.lastTopup = amount;
+      card.updatedAt = Date.now();
+
+      if (holderName && holderName.trim() !== '' && holderName !== card.holderName) {
+        card.holderName = holderName;
+      }
+    }
+
+    await card.save({ session });
+
+    const transaction = await new Transaction({
+      card_uid: card.uid,
+      uid: card.uid,
+      amount,
+      type: 'TOPUP',
+      balanceBefore,
+      balanceAfter: card.balance,
+      description: `Top-up of ${amount}`
+    }).save({ session });
+
+    return { card, transaction, balanceBefore };
+  });
+}
+
+/**
+ * Payment operation used by HTTP /pay endpoint.
+ * Implements the required product/quantity flow and safe wallet update.
+ */
+async function performPayment({ cardUid, productId, quantity }) {
+  return runWalletTransaction('PAYMENT', async (session) => {
+    if (!cardUid) {
+      throw new Error('card_uid is required');
+    }
+
+    if (!productId) {
+      throw new Error('product_id is required for payments');
+    }
+
+    const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 1;
+
+    const product = await Product.findOne({ _id: productId, active: true }).session(session);
+    if (!product) {
+      const error = new Error('Product not found or inactive');
+      error.code = 'PRODUCT_NOT_FOUND';
+      throw error;
+    }
+
+    const totalAmount = product.price * safeQuantity;
+
+    const card = await Card.findOne({ uid: cardUid }).session(session);
+    if (!card) {
+      const error = new Error('Card not found');
+      error.code = 'CARD_NOT_FOUND';
+      throw error;
+    }
+
+    const balanceBefore = card.balance;
+
+    if (balanceBefore < totalAmount) {
+      const error = new Error('Insufficient balance');
+      error.code = 'INSUFFICIENT_FUNDS';
+      throw error;
+    }
+
+    card.balance -= totalAmount;
+    card.updatedAt = Date.now();
+    await card.save({ session });
+
+    const transaction = await new Transaction({
+      card_uid: card.uid,
+      uid: card.uid,
+      amount: totalAmount,
+      type: 'PAYMENT',
+      balanceBefore,
+      balanceAfter: card.balance,
+      productId: product._id,
+      productName: product.name,
+      description: `Payment for ${product.name} x${safeQuantity}`
+    }).save({ session });
 
     return {
-      status: 'rejected',
-      message: 'Insufficient balance'
+      card,
+      transaction,
+      product,
+      quantity: safeQuantity,
+      totalAmount
     };
-  }
-
-  card.balance -= amountToCharge;
-  card.updatedAt = Date.now();
-  await card.save();
-
-  const transaction = new Transaction({
-    card_uid: card.uid,
-    uid: card.uid,
-    amount: amountToCharge,
-    type: 'PAYMENT',
-    balanceBefore,
-    balanceAfter: card.balance,
-    productId: product ? product._id : undefined,
-    productName: product ? product.name : undefined,
-    description: product ? `Payment for ${product.name}` : 'Payment'
   });
-  await transaction.save();
-
-  // Emit WebSocket event for successful payment
-  io.emit('transaction-update', {
-    card_uid: card.uid,
-    operation_type: 'PAYMENT',
-    product_name: product ? product.name : null,
-    amount: amountToCharge,
-    new_balance: card.balance,
-    status: 'success'
-  });
-
-  return {
-    status: 'success',
-    message: 'Payment successful',
-    amount: amountToCharge,
-    productName: product ? product.name : null,
-    newBalance: card.balance,
-    transactionId: transaction._id
-  };
 }
 
 // HTTP Endpoints
@@ -282,43 +305,18 @@ app.post('/topup', async (req, res) => {
   }
 
   try {
-    // Find or create card
-    let card = await Card.findOne({ uid });
-    const balanceBefore = card ? card.balance : 0;
-
-    if (!card) {
-      if (!holderName) {
-        return res.status(400).json({ error: 'Holder name is required for new cards' });
-      }
-      card = new Card({ uid, holderName, balance: amount, lastTopup: amount });
-    } else {
-      // Cumulative topup: add to existing balance
-      card.balance += amount;
-      card.lastTopup = amount;
-      card.updatedAt = Date.now();
-
-      // Allow updating holder name if provided (e.g. renaming "New User")
-      if (holderName && holderName.trim() !== '' && holderName !== card.holderName) {
-        card.holderName = holderName;
-      }
-    }
-
-    await card.save();
-
-    // Create transaction record
-    const transaction = new Transaction({
-      card_uid: card.uid,
-      uid: card.uid,
-      amount: amount,
-      type: 'TOPUP',
-      balanceBefore: balanceBefore,
-      balanceAfter: card.balance,
-      description: `Top-up of ${amount}`
+    const { card, transaction } = await performTopup({
+      cardUid: uid,
+      amount,
+      holderName
     });
-    await transaction.save();
 
     // Publish to MQTT with updated balance
-    const payload = JSON.stringify({ uid, amount: card.balance });
+    const payload = JSON.stringify({
+      uid: card.uid,
+      amount,
+      newBalance: card.balance
+    });
     mqttClient.publish(TOPIC_TOPUP, payload, (err) => {
       if (err) {
         console.error('Failed to publish topup:', err);
@@ -332,9 +330,11 @@ app.post('/topup', async (req, res) => {
       card_uid: card.uid,
       operation_type: 'TOPUP',
       product_name: null,
+      quantity: 1,
       amount: amount,
       new_balance: card.balance,
-      status: 'success'
+      status: 'success',
+      message: 'Topup successful'
     });
 
     res.json({
@@ -354,14 +354,17 @@ app.post('/topup', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Database error:', err);
-    res.status(500).json({ error: 'Database operation failed' });
+    console.error('Topup error:', err);
+    if (err.message && err.message.includes('Holder name is required for new cards')) {
+      return res.status(400).json({ error: 'Holder name is required for new cards' });
+    }
+    res.status(500).json({ error: 'Topup failed. Please try again.' });
   }
 });
 
 // Payment endpoint
 app.post('/pay', async (req, res) => {
-  const { uid, card_uid, product_id, amount } = req.body;
+  const { uid, card_uid, product_id, quantity } = req.body;
 
   const cardUid = card_uid || uid;
 
@@ -369,38 +372,100 @@ app.post('/pay', async (req, res) => {
     return res.status(400).json({ error: 'card_uid (or uid) is required' });
   }
 
-  if (!product_id && (amount === undefined || amount === null)) {
-    return res.status(400).json({ error: 'Either product_id or amount is required' });
+  if (!product_id) {
+    return res.status(400).json({ error: 'product_id is required' });
   }
 
   try {
-    const result = await handlePayment({
+    const {
+      card,
+      transaction,
+      product,
+      quantity: safeQuantity,
+      totalAmount
+    } = await performPayment({
       cardUid,
       productId: product_id,
-      directAmount: product_id ? undefined : amount
+      quantity
     });
 
-    if (result.status === 'rejected') {
-      return res.status(400).json({
-        success: false,
-        status: 'rejected',
-        message: result.message
-      });
-    }
+    // Publish payment command to device
+    const payload = JSON.stringify({
+      card_uid: card.uid,
+      product_id,
+      quantity: safeQuantity,
+      amount: totalAmount,
+      newBalance: card.balance
+    });
+    mqttClient.publish(TOPIC_PAY, payload, (err) => {
+      if (err) {
+        console.error('Failed to publish payment command:', err);
+      } else {
+        console.log(`Published pay for ${card.uid}: -${totalAmount} (x${safeQuantity} ${product.name})`);
+      }
+    });
+
+    // Emit WebSocket event for successful payment
+    io.emit('transaction-update', {
+      card_uid: card.uid,
+      operation_type: 'PAYMENT',
+      product_name: product.name,
+      quantity: safeQuantity,
+      amount: totalAmount,
+      new_balance: card.balance,
+      status: 'success',
+      message: 'Payment successful'
+    });
 
     return res.json({
       success: true,
       status: 'success',
-      message: result.message,
-      card_uid: cardUid,
-      amount: result.amount,
-      product_name: result.productName,
-      new_balance: result.newBalance,
-      transactionId: result.transactionId
+      message: 'Payment successful',
+      card_uid: card.uid,
+      product_name: product.name,
+      quantity: safeQuantity,
+      amount: totalAmount,
+      new_balance: card.balance,
+      transactionId: transaction._id
     });
   } catch (err) {
     console.error('Payment error:', err);
-    return res.status(500).json({ error: 'Payment failed' });
+    // Map known error codes to user-facing messages
+    if (err.code === 'PRODUCT_NOT_FOUND') {
+      return res.status(404).json({
+        success: false,
+        status: 'rejected',
+        message: 'Product not found or inactive'
+      });
+    }
+    if (err.code === 'CARD_NOT_FOUND') {
+      return res.status(404).json({
+        success: false,
+        status: 'rejected',
+        message: 'Card not found'
+      });
+    }
+    if (err.code === 'INSUFFICIENT_FUNDS') {
+      // Emit WebSocket event for rejected payment
+      io.emit('transaction-update', {
+        card_uid: cardUid,
+        operation_type: 'PAYMENT',
+        product_name: null,
+        quantity: quantity || 1,
+        amount: null,
+        new_balance: null,
+        status: 'rejected',
+        message: 'Insufficient balance'
+      });
+
+      return res.status(400).json({
+        success: false,
+        status: 'rejected',
+        message: 'Insufficient balance'
+      });
+    }
+
+    return res.status(500).json({ error: 'Payment failed. Please try again.' });
   }
 });
 
