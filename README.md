@@ -1,5 +1,9 @@
 # EdgeWallet RFID Payment System
 
+Live URL: http://157.173.101.159:8256/
+
+
+
 A complete RFID-based payment system featuring real-time card management, transaction tracking, and a modern dashboard interface built with ESP8266, MQTT, and MongoDB.
 
 ---
@@ -91,12 +95,12 @@ npm start
 ### Access Points
 
 **Local Development:**
-- Frontend: http://localhost:9208
-- Backend API: http://localhost:8208
+- Frontend: http://localhost:8256
+- Backend API: http://localhost:8256
 
 **Production (VPS):**
-- Frontend: http://157.173.101.159:9208
-- Backend API: http://157.173.101.159:8208
+- Frontend: http://157.173.101.159:8256
+- Backend API: http://157.173.101.159:9256
 
 ---
 
@@ -152,15 +156,15 @@ Create a `.env` file in the `backend/` directory:
 
 ```env
 MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/edgewallet
-PORT=8208
+PORT=8256
 ```
 
 ### Frontend Configuration
 
 The frontend **automatically detects** the environment:
 
-- **Development**: Uses `http://localhost:8208`
-- **Production**: Uses `http://157.173.101.159:8208`
+- **Development**: Uses `http://localhost:8256`
+- **Production**: Uses `http://157.173.101.159:8256`
 
 No manual configuration required! The system detects whether you're running locally or on the VPS.
 
@@ -184,7 +188,7 @@ Returns details for a specific card by UID.
 
 **Example:**
 ```bash
-curl http://localhost:8208/card/A1B2C3D4
+curl http://localhost:8256/card/A1B2C3D4
 ```
 
 #### Top Up Card
@@ -251,7 +255,7 @@ Emitted when a card balance is successfully updated.
 
 #### Published by ESP8266
 
-**rfid/team_rdf/card/status**
+**rfid/quantum_bitflip_OxDEAD/card/status**
 ```json
 {
   "uid": "A1B2C3D4",
@@ -260,7 +264,7 @@ Emitted when a card balance is successfully updated.
 ```
 Published when a card is detected.
 
-**rfid/team_rdf/card/balance**
+**rfid/quantum_bitflip_OxDEAD/card/balance**
 ```json
 {
   "uid": "A1B2C3D4",
@@ -270,13 +274,13 @@ Published when a card is detected.
 ```
 Confirmation after balance update.
 
-**rfid/team_rdf/device/status**
+**rfid/quantum_bitflip_OxDEAD/device/status**
 ```
 online
 ```
 Last Will message (online/offline).
 
-**rfid/team_rdf/device/health**
+**rfid/quantum_bitflip_OxDEAD/device/health**
 ```json
 {
   "ip": "192.168.1.100",
@@ -289,7 +293,7 @@ Periodic health metrics every 30 seconds.
 
 #### Published by Backend
 
-**rfid/team_rdf/card/topup**
+**rfid/quantum_bitflip_OxDEAD/card/topup**
 ```json
 {
   "uid": "A1B2C3D4",
@@ -358,7 +362,7 @@ Real-time monitoring of:
 
 #### 1. Upload Files to VPS
 ```bash
-scp -r tap-to-pay root@157.173.101.159:/root/
+scp -r edgeWallet root@157.173.101.159:/root/
 ```
 
 #### 2. SSH into VPS
@@ -368,7 +372,7 @@ ssh root@157.173.101.159
 
 #### 3. Navigate to Project
 ```bash
-cd /root/tap-to-pay
+cd /root/EdgeWallet
 ```
 
 #### 4. Make Deploy Script Executable
@@ -398,8 +402,8 @@ You should see:
 ┌────┬───────────────────────┬─────────┬─────────┐
 │ id │ name                  │ status  │ cpu     │
 ├────┼───────────────────────┼─────────┼─────────┤
-│ 0  │ tap-to-pay-backend    │ online  │ 0%      │
-│ 1  │ tap-to-pay-frontend   │ online  │ 0%      │
+│ 0  │ edgeWallet-backend    │ online  │ 0%      │
+│ 1  │ edgeWallet-frontend   │ online  │ 0%      │
 └────┴───────────────────────┴─────────┴─────────┘
 ```
 
