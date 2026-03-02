@@ -18,7 +18,8 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-const PORT = 8690;
+// Use 8690 for local dev, 9256 in production (VPS nginx/firewall already expect 9256).
+const PORT = process.env.PORT || 8690;
 const TEAM_ID = "quantum_bitflip_0xDEAD";
 const MQTT_BROKER = "mqtt://157.173.101.159:1883";
 const MONGO_URI = process.env.MONGODB_URI;
