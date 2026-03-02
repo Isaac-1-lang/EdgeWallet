@@ -1,6 +1,6 @@
 # EdgeWallet RFID Payment System
 
-Live URL: http://157.173.101.159:8256/
+Live URL: http://157.173.101.159:9256/
 
 
 
