@@ -12,7 +12,7 @@ const uint32_t WIFI_TIMEOUT_MS = 30000;
 // ----------------- MQTT Configuration -----------------
 const char* mqtt_server = "broker.benax.rw";
 const uint16_t MQTT_PORT = 1883;
-const char* team_id = "quantum_bitflip_0xDEAD";
+const char* team_id = "bright_sandracp_isaac";
 
 // ----------------- MQTT Topics (strict set) -----------------
 // NOTE: Assignment requires using only these four topics.

@@ -44,10 +44,10 @@ A complete RFID-based payment system featuring real-time card management, transa
 ### Team Information
 | Component | Value |
 |-----------|-------|
-| **Team ID** | `quantum_bitflip_0xDEAD` |
+| **Team ID** | `bright_sandracp_isaac` |
 | **VPS Server** | 157.173.101.159 |
-| **Backend Port** | 8208 |
-| **Frontend Port** | 9208 |
+| **Backend Port** | 8256 |
+| **Frontend Port** | 9256 |
 | **MQTT Broker** | 157.173.101.159:1883 |
 
 ### Technology Stack
@@ -99,8 +99,8 @@ npm start
 - Backend API: http://localhost:8256
 
 **Production (VPS):**
-- Frontend: http://157.173.101.159:8256
-- Backend API: http://157.173.101.159:9256
+- Frontend: http://157.173.101.159:9256
+- Backend API: http://157.173.101.159:8256
 
 ---
 
