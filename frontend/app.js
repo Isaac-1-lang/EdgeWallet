@@ -1,5 +1,118 @@
 const socket = io(BACKEND_URL);
 
+// ============================================================
+// Demo Login (NOT real auth) — role gating only
+// ============================================================
+const loginOverlay = document.getElementById('login-overlay');
+const loginForm = document.getElementById('login-form');
+const loginUsernameInput = document.getElementById('login-username');
+const loginPasswordInput = document.getElementById('login-password');
+const loginError = document.getElementById('login-error');
+const loggedInAs = document.getElementById('logged-in-as');
+const logoutBtn = document.getElementById('logout-btn');
+
+let demoUser = null; // { username, role }
+
+function getRoleForDemoUser(username) {
+  const u = String(username || '').trim().toLowerCase();
+  if (u === 'agent') return 'agent';
+  if (u === 'sales' || u === 'salesperson') return 'sales';
+  return null;
+}
+
+function setDemoUser(user) {
+  demoUser = user;
+  localStorage.setItem('edgewallet_demo_user', JSON.stringify(user));
+  applyRoleUI();
+}
+
+function clearDemoUser() {
+  demoUser = null;
+  localStorage.removeItem('edgewallet_demo_user');
+}
+
+function showLogin() {
+  loginOverlay.classList.add('visible');
+  loginError.textContent = '';
+  setTimeout(() => loginUsernameInput.focus(), 50);
+}
+
+function hideLogin() {
+  loginOverlay.classList.remove('visible');
+}
+
+function applyRoleUI() {
+  const role = demoUser?.role || null;
+  const username = demoUser?.username || '—';
+
+  loggedInAs.textContent = role ? `${username} (${role})` : '—';
+
+  // Sidebar role filtering
+  document.querySelectorAll('.sidebar-nav .nav-item').forEach((item) => {
+    const allowed = item.getAttribute('data-role');
+    // if a nav item declares a role, enforce it
+    if (allowed && role && allowed !== role) {
+      item.style.display = 'none';
+    } else if (allowed && role && allowed === role) {
+      item.style.display = '';
+    } else if (allowed && !role) {
+      item.style.display = 'none';
+    } else {
+      item.style.display = '';
+    }
+  });
+
+  // Force a valid default view for the role
+  if (role === 'agent') {
+    switchView('admin');
+  } else if (role === 'sales') {
+    switchView('cashier');
+  }
+}
+
+// Initialize login state
+try {
+  const saved = localStorage.getItem('edgewallet_demo_user');
+  if (saved) demoUser = JSON.parse(saved);
+} catch {
+  demoUser = null;
+}
+
+if (!demoUser?.role) {
+  showLogin();
+} else {
+  hideLogin();
+}
+
+loginForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  loginError.textContent = '';
+
+  const username = loginUsernameInput.value.trim();
+  const password = loginPasswordInput.value;
+  const role = getRoleForDemoUser(username);
+
+  if (!role) {
+    loginError.textContent = 'Unknown demo user. Use "agent" or "sales".';
+    return;
+  }
+  if (password !== '1234') {
+    loginError.textContent = 'Invalid password. Try again.';
+    return;
+  }
+
+  setDemoUser({ username, role });
+  hideLogin();
+});
+
+logoutBtn.addEventListener('click', () => {
+  clearDemoUser();
+  // reset UI state
+  showLogin();
+  // optional: reset to safe defaults
+  switchView('admin');
+});
+
 // ── Admin (Top-Up) view elements ──
 const statusDisplay = document.getElementById('status-display');
 const uidInput = document.getElementById('uid');
@@ -18,7 +131,8 @@ const marketplaceView = document.getElementById('marketplace-view');
 const navItems = document.querySelectorAll('.sidebar-nav .nav-item');
 const cashierUidInput = document.getElementById('cashier-uid');
 const cashierPrevBalance = document.getElementById('cashier-previous-balance');
-const cashierProductSelect = document.getElementById('cashier-product');
+const cashierItemTypeSelect = document.getElementById('cashier-item-type');
+const cashierItemSelect = document.getElementById('cashier-item');
 const cashierQuantityInput = document.getElementById('cashier-quantity');
 const cashierTotalDisplay = document.getElementById('cashier-total');
 const cashierPayBtn = document.getElementById('cashier-pay-btn');
@@ -55,31 +169,43 @@ let lastScannedUid = null;
 let currentCardData = null;
 let startTime = Date.now();
 let productsCache = [];
+let servicesCache = [];
 let cart = []; // { product, quantity }
 let activeCategory = 'all';
 
 // ============================================================
 // View switching between Admin, Marketplace, and Cashier
 // ============================================================
+function switchView(targetView) {
+  navItems.forEach((n) => n.classList.remove('active'));
+  const nav = Array.from(navItems).find((i) => i.getAttribute('data-view') === targetView);
+  if (nav) nav.classList.add('active');
+
+  adminView.style.display = 'none';
+  cashierView.style.display = 'none';
+  marketplaceView.classList.remove('active-view');
+
+  if (targetView === 'cashier') {
+    cashierView.style.display = 'grid';
+  } else if (targetView === 'marketplace') {
+    marketplaceView.classList.add('active-view');
+  } else {
+    adminView.style.display = 'grid';
+  }
+}
+
 navItems.forEach((item) => {
   item.addEventListener('click', (e) => {
     e.preventDefault();
     const targetView = item.getAttribute('data-view');
 
-    navItems.forEach((n) => n.classList.remove('active'));
-    item.classList.add('active');
-
-    adminView.style.display = 'none';
-    cashierView.style.display = 'none';
-    marketplaceView.classList.remove('active-view');
-
-    if (targetView === 'cashier') {
-      cashierView.style.display = 'grid';
-    } else if (targetView === 'marketplace') {
-      marketplaceView.classList.add('active-view');
-    } else {
-      adminView.style.display = 'grid';
+    // Enforce role gating: nav items already hidden, but keep this safe.
+    const allowedRole = item.getAttribute('data-role');
+    if (allowedRole && demoUser?.role && allowedRole !== demoUser.role) {
+      return;
     }
+
+    switchView(targetView);
   });
 });
 
@@ -115,6 +241,7 @@ socket.on('connect', () => {
 
   loadStats();
   loadProducts();
+  loadServices();
 });
 
 socket.on('disconnect', () => {
@@ -342,20 +469,57 @@ cashierForm.addEventListener('submit', async (e) => {
   e.preventDefault();
 
   const cardUid = lastScannedUid;
-  const productId = cashierProductSelect.value;
+  const itemType = cashierItemTypeSelect.value;
+  const itemId = cashierItemSelect.value;
   const quantity = parseInt(cashierQuantityInput.value, 10) || 1;
 
   if (!cardUid) { alert('Please scan a card first'); return; }
-  if (!productId) { alert('Please select a product'); return; }
+  if (!itemId) { alert('Please select an item'); return; }
   if (quantity <= 0) { alert('Quantity must be at least 1'); return; }
 
   try {
     cashierPayBtn.disabled = true;
-    await fetch(`${BACKEND_URL}/pay`, {
+    cashierResult.innerHTML = '';
+
+    const body = {
+      card_uid: cardUid,
+      quantity,
+      operator: demoUser?.username || undefined
+    };
+    if (itemType === 'service') {
+      body.service_id = itemId;
+    } else {
+      body.product_id = itemId;
+    }
+
+    const res = await fetch(`${BACKEND_URL}/pay`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ card_uid: cardUid, product_id: productId, quantity })
+      body: JSON.stringify(body)
     });
+
+    const result = await res.json().catch(() => ({}));
+
+    if (result?.success && result?.receiptId) {
+      const downloadUrl = `${BACKEND_URL}/receipts/${result.receiptId}/download`;
+      cashierResult.innerHTML = `
+        <div class="data-row">
+          <span class="data-label">Receipt:</span>
+          <span class="data-value"><a href="${downloadUrl}" target="_blank" rel="noopener">Download</a></span>
+        </div>
+      `;
+    } else if (result?.message) {
+      cashierResult.innerHTML = `
+        <div class="data-row">
+          <span class="data-label">Status:</span>
+          <span class="data-value" style="color:#ef4444;">Rejected</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">Message:</span>
+          <span class="data-value">${result.message}</span>
+        </div>
+      `;
+    }
   } catch (err) {
     console.error('Failed to connect to backend for payment:', err);
     updateSystemStatus('backend', false);
@@ -442,17 +606,8 @@ async function loadProducts() {
     const products = await response.json();
     productsCache = products;
 
-    // Populate cashier dropdown
-    cashierProductSelect.innerHTML = '<option value="">Select a product</option>';
-    products.forEach((p) => {
-      const opt = document.createElement('option');
-      opt.value = p._id;
-      opt.textContent = `${p.emoji || ''} ${p.name} – $${p.price.toFixed(2)}`;
-      opt.dataset.price = p.price;
-      cashierProductSelect.appendChild(opt);
-    });
-
-    updateCashierTotal();
+    // Populate cashier item dropdown (products by default)
+    populateCashierItems();
 
     // Build category tabs
     const categories = [...new Set(products.map(p => p.category || 'General'))];
@@ -465,20 +620,56 @@ async function loadProducts() {
   }
 }
 
-function updateCashierTotal() {
-  const productId = cashierProductSelect.value;
-  const quantity = parseInt(cashierQuantityInput.value, 10) || 1;
-  const product = productsCache.find((p) => p._id === productId);
+// ============================================================
+// Load services — cashier only (sales requirement)
+// ============================================================
+async function loadServices() {
+  try {
+    const response = await fetch(`${BACKEND_URL}/services`);
+    if (!response.ok) return;
+    const services = await response.json();
+    servicesCache = services;
+    populateCashierItems();
+  } catch (err) {
+    console.error('Failed to load services:', err);
+  }
+}
 
-  if (!product || quantity <= 0) {
+function populateCashierItems() {
+  const type = cashierItemTypeSelect.value;
+  const items = type === 'service' ? servicesCache : productsCache;
+
+  cashierItemSelect.innerHTML = '<option value="">Select an item</option>';
+  items.forEach((it) => {
+    const opt = document.createElement('option');
+    opt.value = it._id;
+    const emoji = it.emoji || (type === 'service' ? '🧾' : '📦');
+    opt.textContent = `${emoji} ${it.name} – $${Number(it.price).toFixed(2)}`;
+    cashierItemSelect.appendChild(opt);
+  });
+
+  updateCashierTotal();
+}
+
+function updateCashierTotal() {
+  const type = cashierItemTypeSelect.value;
+  const itemId = cashierItemSelect.value;
+  const quantity = parseInt(cashierQuantityInput.value, 10) || 1;
+  const list = type === 'service' ? servicesCache : productsCache;
+  const item = list.find((p) => p._id === itemId);
+
+  if (!item || quantity <= 0) {
     cashierTotalDisplay.textContent = '$0.00';
     return;
   }
 
-  cashierTotalDisplay.textContent = `$${(product.price * quantity).toFixed(2)}`;
+  cashierTotalDisplay.textContent = `$${(item.price * quantity).toFixed(2)}`;
 }
 
-cashierProductSelect.addEventListener('change', updateCashierTotal);
+cashierItemTypeSelect.addEventListener('change', () => {
+  populateCashierItems();
+});
+cashierItemSelect.addEventListener('change', updateCashierTotal);
 cashierQuantityInput.addEventListener('input', updateCashierTotal);
 
 // ============================================================
@@ -753,3 +944,6 @@ async function loadTransactionHistory() {
 // Initial load
 loadStats();
 loadTransactionHistory();
+
+// Apply role UI after startup
+applyRoleUI();

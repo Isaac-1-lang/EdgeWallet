@@ -59,6 +59,126 @@ body {
     min-height: 100vh;
 }
 
+/* ============================================
+   Dummy Login Overlay (Demo-only)
+   ============================================ */
+.login-overlay {
+    position: fixed;
+    inset: 0;
+    display: none; /* shown via JS until "logged in" */
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    z-index: 9999;
+    background: radial-gradient(circle at 30% 20%, rgba(99, 102, 241, 0.22), transparent 55%),
+        radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.18), transparent 55%),
+        rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(16px);
+}
+
+.login-overlay.visible {
+    display: flex;
+}
+
+.login-card {
+    width: min(520px, 100%);
+    background: rgba(10, 15, 40, 0.75);
+    border: 1px solid var(--glass-border-hover);
+    border-radius: var(--radius-lg);
+    padding: 1.4rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), var(--glow-purple);
+    position: relative;
+    overflow: hidden;
+}
+
+.login-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--grad-card);
+    opacity: 0.8;
+    pointer-events: none;
+}
+
+.login-title {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 1rem;
+}
+
+.login-title h2 {
+    font-size: 1.25rem;
+    color: var(--text-bright);
+    letter-spacing: -0.01em;
+    margin-bottom: 0.25rem;
+}
+
+.login-title p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.login-form {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 0.85rem;
+}
+
+.login-hints {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.75rem;
+    border-radius: 0.9rem;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.hint-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.hint-role {
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.hint-cred {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--neon-cyan);
+}
+
+.login-error {
+    min-height: 1.2rem;
+    font-size: 0.9rem;
+    color: #ef4444;
+}
+
+.logout-btn {
+    width: 100%;
+    margin: 0.25rem 0 0.75rem;
+    padding: 0.65rem 0.9rem;
+    border-radius: 0.85rem;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.logout-btn:hover {
+    border-color: var(--glass-border-hover);
+    transform: translateY(-1px);
+}
+
+.logout-btn:active {
+    transform: translateY(0);
+}
+
 /* ── Animated background mesh ── */
 body::before {
     content: '';

@@ -83,6 +83,35 @@ const productSchema = new mongoose.Schema({
 
 const Product = mongoose.model('Product', productSchema, 'products');
 
+// Service Schema (demo services for salesperson payments)
+const serviceSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  price: { type: Number, required: true },
+  category: { type: String, default: 'Services' },
+  emoji: { type: String, default: '🧾' },
+  active: { type: Boolean, default: true }
+});
+
+const Service = mongoose.model('Service', serviceSchema, 'services');
+
+// Receipt Schema (generated for payments; downloadable)
+const receiptSchema = new mongoose.Schema({
+  receiptNo: { type: String, required: true, unique: true, index: true },
+  transactionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Transaction', required: true, index: true },
+  card_uid: { type: String, required: true, index: true },
+  operator: { type: String }, // demo cashier/sales username
+  itemType: { type: String, enum: ['PRODUCT', 'SERVICE'], required: true },
+  itemName: { type: String, required: true },
+  unitPrice: { type: Number, required: true },
+  quantity: { type: Number, required: true },
+  totalAmount: { type: Number, required: true },
+  balanceBefore: { type: Number, required: true },
+  balanceAfter: { type: Number, required: true },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Receipt = mongoose.model('Receipt', receiptSchema, 'receipts');
+
 // Strict MQTT topic set (no wildcards, no extra topics)
 const TOPIC_STATUS = `rfid/${TEAM_ID}/card/status`;
 const TOPIC_BALANCE = `rfid/${TEAM_ID}/card/balance`;
@@ -179,6 +208,29 @@ async function seedProducts() {
     console.log('Seeded demo products collection');
   } catch (err) {
     console.error('Failed to seed products:', err);
+  }
+}
+
+// Seed demo services on first run
+async function seedServices() {
+  try {
+    const count = await Service.estimatedDocumentCount();
+    if (count > 0) {
+      return;
+    }
+
+    const demoServices = [
+      { name: 'Printing (10 pages)', price: 1500, category: 'Services', emoji: '🖨️', active: true },
+      { name: 'Photocopy', price: 300, category: 'Services', emoji: '📄', active: true },
+      { name: 'Internet Access (1 hour)', price: 1000, category: 'Services', emoji: '🌐', active: true },
+      { name: 'Laundry Service', price: 2500, category: 'Services', emoji: '🧺', active: true },
+      { name: 'Transport Ticket', price: 800, category: 'Services', emoji: '🚌', active: true }
+    ];
+
+    await Service.insertMany(demoServices);
+    console.log('Seeded demo services collection');
+  } catch (err) {
+    console.error('Failed to seed services:', err);
   }
 }
 
@@ -292,30 +344,51 @@ async function performTopup({ cardUid, amount, holderName }) {
  * Payment operation used by HTTP /pay endpoint.
  * Implements the required product/quantity flow and safe wallet update.
  */
-async function performPayment({ cardUid, productId, quantity }) {
+async function performPayment({ cardUid, productId, serviceId, quantity, operator }) {
   return runWalletTransaction('PAYMENT', async (session) => {
     if (!cardUid) {
       throw new Error('card_uid is required');
     }
 
-    if (!productId) {
-      throw new Error('product_id is required for payments');
+    const hasProduct = Boolean(productId);
+    const hasService = Boolean(serviceId);
+    if (!hasProduct && !hasService) {
+      throw new Error('product_id or service_id is required for payments');
+    }
+    if (hasProduct && hasService) {
+      throw new Error('Provide only one of product_id or service_id');
     }
 
     const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 1;
 
-    let productQuery = Product.findOne({ _id: productId, active: true });
-    if (session) {
-      productQuery = productQuery.session(session);
-    }
-    const product = await productQuery;
-    if (!product) {
-      const error = new Error('Product not found or inactive');
-      error.code = 'PRODUCT_NOT_FOUND';
-      throw error;
+    let itemType = 'PRODUCT';
+    let item;
+    if (hasService) {
+      itemType = 'SERVICE';
+      let serviceQuery = Service.findOne({ _id: serviceId, active: true });
+      if (session) {
+        serviceQuery = serviceQuery.session(session);
+      }
+      item = await serviceQuery;
+      if (!item) {
+        const error = new Error('Service not found or inactive');
+        error.code = 'PRODUCT_NOT_FOUND';
+        throw error;
+      }
+    } else {
+      let productQuery = Product.findOne({ _id: productId, active: true });
+      if (session) {
+        productQuery = productQuery.session(session);
+      }
+      item = await productQuery;
+      if (!item) {
+        const error = new Error('Product not found or inactive');
+        error.code = 'PRODUCT_NOT_FOUND';
+        throw error;
+      }
     }
 
-    const totalAmount = product.price * safeQuantity;
+    const totalAmount = item.price * safeQuantity;
 
     let cardQuery = Card.findOne({ uid: cardUid });
     if (session) {
@@ -348,17 +421,35 @@ async function performPayment({ cardUid, productId, quantity }) {
       type: 'PAYMENT',
       balanceBefore,
       balanceAfter: card.balance,
-      productId: product._id,
-      productName: product.name,
-      description: `Payment for ${product.name} x${safeQuantity}`
+      productId: hasProduct ? item._id : undefined,
+      productName: hasProduct ? item.name : undefined,
+      description: `Payment for ${item.name} x${safeQuantity}`
+    }).save(saveOptions);
+
+    // Create receipt for download
+    const receiptNo = `EW-${Date.now()}-${Math.random().toString(16).slice(2, 8).toUpperCase()}`;
+    const receipt = await new Receipt({
+      receiptNo,
+      transactionId: transaction._id,
+      card_uid: card.uid,
+      operator: operator ? String(operator) : undefined,
+      itemType,
+      itemName: item.name,
+      unitPrice: item.price,
+      quantity: safeQuantity,
+      totalAmount,
+      balanceBefore,
+      balanceAfter: card.balance
     }).save(saveOptions);
 
     return {
       card,
       transaction,
-      product,
+      item,
+      itemType,
       quantity: safeQuantity,
-      totalAmount
+      totalAmount,
+      receipt
     };
   });
 }
@@ -431,7 +522,7 @@ app.post('/topup', async (req, res) => {
 
 // Payment endpoint
 app.post('/pay', async (req, res) => {
-  const { uid, card_uid, product_id, quantity } = req.body;
+  const { uid, card_uid, product_id, service_id, quantity, operator } = req.body;
 
   const cardUid = card_uid || uid;
 
@@ -439,27 +530,33 @@ app.post('/pay', async (req, res) => {
     return res.status(400).json({ error: 'card_uid (or uid) is required' });
   }
 
-  if (!product_id) {
-    return res.status(400).json({ error: 'product_id is required' });
+  if (!product_id && !service_id) {
+    return res.status(400).json({ error: 'product_id or service_id is required' });
   }
 
   try {
     const {
       card,
       transaction,
-      product,
+      item,
+      itemType,
       quantity: safeQuantity,
-      totalAmount
+      totalAmount,
+      receipt
     } = await performPayment({
       cardUid,
       productId: product_id,
-      quantity
+      serviceId: service_id,
+      quantity,
+      operator
     });
 
     // Publish payment command to device
     const payload = JSON.stringify({
       card_uid: card.uid,
-      product_id,
+      product_id: product_id || service_id, // keep field for device compatibility
+      service_id: service_id || null,
+      item_type: itemType,
       quantity: safeQuantity,
       amount: totalAmount,
       newBalance: card.balance
@@ -468,7 +565,7 @@ app.post('/pay', async (req, res) => {
       if (err) {
         console.error('Failed to publish payment command:', err);
       } else {
-        console.log(`Published pay for ${card.uid}: -${totalAmount} (x${safeQuantity} ${product.name})`);
+        console.log(`Published pay for ${card.uid}: -${totalAmount} (x${safeQuantity} ${item.name})`);
       }
     });
 
@@ -476,7 +573,7 @@ app.post('/pay', async (req, res) => {
     io.emit('transaction-update', {
       card_uid: card.uid,
       operation_type: 'PAYMENT',
-      product_name: product.name,
+      product_name: item.name,
       quantity: safeQuantity,
       amount: totalAmount,
       new_balance: card.balance,
@@ -489,11 +586,14 @@ app.post('/pay', async (req, res) => {
       status: 'success',
       message: 'Payment successful',
       card_uid: card.uid,
-      product_name: product.name,
+      product_name: item.name,
+      item_type: itemType,
       quantity: safeQuantity,
       amount: totalAmount,
       new_balance: card.balance,
-      transactionId: transaction._id
+      transactionId: transaction._id,
+      receiptId: receipt?._id,
+      receiptNo: receipt?.receiptNo
     });
   } catch (err) {
     console.error('Payment error:', err);
@@ -502,7 +602,7 @@ app.post('/pay', async (req, res) => {
       return res.status(404).json({
         success: false,
         status: 'rejected',
-        message: 'Product not found or inactive'
+        message: 'Item not found or inactive'
       });
     }
     if (err.code === 'CARD_NOT_FOUND') {
@@ -602,6 +702,95 @@ app.get('/products', async (req, res) => {
   }
 });
 
+// Get active services (for demo frontend or testing tools)
+app.get('/services', async (req, res) => {
+  try {
+    const services = await Service.find({ active: true }).sort({ price: 1 });
+    res.json(services);
+  } catch (err) {
+    console.error('Database error:', err);
+    res.status(500).json({ error: 'Database operation failed' });
+  }
+});
+
+// Receipt JSON
+app.get('/receipts/:id', async (req, res) => {
+  try {
+    const receipt = await Receipt.findById(req.params.id);
+    if (!receipt) {
+      return res.status(404).json({ error: 'Receipt not found' });
+    }
+    res.json(receipt);
+  } catch (err) {
+    console.error('Receipt fetch error:', err);
+    res.status(500).json({ error: 'Database operation failed' });
+  }
+});
+
+// Receipt download (HTML attachment)
+app.get('/receipts/:id/download', async (req, res) => {
+  try {
+    const receipt = await Receipt.findById(req.params.id);
+    if (!receipt) {
+      return res.status(404).send('Receipt not found');
+    }
+
+    const created = new Date(receipt.createdAt);
+    const dateStr = created.toLocaleString();
+    const filename = `receipt-${receipt.receiptNo}.html`;
+
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Receipt ${receipt.receiptNo}</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 24px; background: #f6f7fb; }
+    .card { max-width: 560px; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
+    h1 { margin: 0 0 6px; font-size: 18px; }
+    .muted { color: #6b7280; font-size: 12px; }
+    .row { display:flex; justify-content: space-between; gap: 12px; margin: 10px 0; }
+    .label { color:#6b7280; font-size: 12px; }
+    .value { font-weight: 600; }
+    .hr { height: 1px; background: #e5e7eb; margin: 14px 0; }
+    .total { font-size: 16px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>EdgeWallet Receipt</h1>
+    <div class="muted">Receipt No: <span class="mono">${receipt.receiptNo}</span></div>
+    <div class="muted">Date: ${dateStr}</div>
+    <div class="muted">Operator: ${receipt.operator || '—'}</div>
+    <div class="hr"></div>
+
+    <div class="row"><div class="label">Card UID</div><div class="value mono">${receipt.card_uid}</div></div>
+    <div class="row"><div class="label">Type</div><div class="value">${receipt.itemType}</div></div>
+    <div class="row"><div class="label">Item</div><div class="value">${receipt.itemName}</div></div>
+    <div class="row"><div class="label">Unit Price</div><div class="value">$${Number(receipt.unitPrice).toFixed(2)}</div></div>
+    <div class="row"><div class="label">Quantity</div><div class="value">${receipt.quantity}</div></div>
+    <div class="hr"></div>
+
+    <div class="row total"><div class="label">Total Paid</div><div class="value">$${Number(receipt.totalAmount).toFixed(2)}</div></div>
+    <div class="row"><div class="label">Balance Before</div><div class="value">$${Number(receipt.balanceBefore).toFixed(2)}</div></div>
+    <div class="row"><div class="label">Balance After</div><div class="value">$${Number(receipt.balanceAfter).toFixed(2)}</div></div>
+    <div class="hr"></div>
+    <div class="muted">Thank you for using EdgeWallet.</div>
+  </div>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(html);
+  } catch (err) {
+    console.error('Receipt download error:', err);
+    res.status(500).send('Failed to generate receipt');
+  }
+});
+
 // Socket connectivity
 io.on('connection', (socket) => {
   console.log('A user connected to the dashboard');
@@ -614,4 +803,5 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log(`Backend server running on http://0.0.0.0:${PORT}`);
   console.log(`Access from: http://157.173.101.159:${PORT}`);
   await seedProducts();
+  await seedServices();
 });

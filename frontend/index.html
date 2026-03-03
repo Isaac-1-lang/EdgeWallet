@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="EdgeWallet - RFID Payment System Dashboard">
-  <title>EdgeWallet - RFID Payment Dashboard</title>
+  <title>EdgeWallet---RFID Payment Dashboard</title>
 
   <!-- Stylesheets -->
   <link rel="stylesheet" href="style.css">
@@ -29,6 +29,30 @@
   <!-- Toast Notification Container -->
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
+  <!-- Dummy Login Overlay (not real auth; demo roles only) -->
+  <div id="login-overlay" class="login-overlay" role="dialog" aria-modal="true" aria-label="Demo login">
+    <div class="login-card">
+      <div class="login-title">
+        <h2>Login</h2>
+        <p>Enjoy your digital wallet and life.</p>
+      </div>
+
+      <form id="login-form" class="login-form" autocomplete="off">
+        <div class="input-group">
+          <label for="login-username">Username</label>
+          <input id="login-username" name="username" type="text" placeholder="Username" required>
+        </div>
+
+        <div class="input-group">
+          <label for="login-password">Password</label>
+          <input id="login-password" name="password" type="password" placeholder="1234567890" required>
+        </div>
+        <button type="submit" id="login-btn">Enter</button>
+        <div id="login-error" class="login-error" aria-live="polite"></div>
+      </form>
+    </div>
+  </div>
+
   <div class="dashboard">
 
     <!-- ============================================ -->
@@ -51,23 +75,23 @@
 
       <!-- Navigation Menu -->
       <nav class="sidebar-nav" role="navigation" aria-label="Main navigation">
-        <a href="#admin" class="nav-item active" aria-current="page" data-view="admin">
+        <a href="#admin" class="nav-item active" aria-current="page" data-view="admin" data-role="agent">
           <span class="nav-icon" aria-hidden="true">
             <i data-feather="credit-card"></i>
           </span>
-          <span class="nav-text">Admin Portal</span>
+          <span class="nav-text">Add Money to the Card</span>
         </a>
-        <a href="#marketplace" class="nav-item" data-view="marketplace">
+        <a href="#marketplace" class="nav-item" data-view="marketplace" data-role="sales">
           <span class="nav-icon" aria-hidden="true">
             <i data-feather="shopping-bag"></i>
           </span>
-          <span class="nav-text">Marketplace</span>
+          <span class="nav-text">Products</span>
         </a>
-        <a href="#cashier" class="nav-item" data-view="cashier">
+        <a href="#cashier" class="nav-item" data-view="cashier" data-role="sales">
           <span class="nav-icon" aria-hidden="true">
             <i data-feather="shopping-cart"></i>
           </span>
-          <span class="nav-text">Cashier Portal</span>
+          <span class="nav-text">Payment</span>
         </a>
       </nav>
 
@@ -102,9 +126,16 @@
 
       <!-- Sidebar Footer -->
       <div class="sidebar-footer">
+        <div class="team-info" style="margin-bottom: 0.5rem;">
+          <span class="team-label">Logged in</span>
+          <span class="team-value" id="logged-in-as">—</span>
+        </div>
+        <button id="logout-btn" class="logout-btn" type="button" title="Logout (demo)">
+          Logout
+        </button>
         <div class="team-info">
           <span class="team-label">Team ID</span>
-          <span class="team-value">quantum_bitflip_0xDEAD</span>
+          <span class="team-value">bright_sandracp_isaac</span>
         </div>
         <div class="uptime">
           <span class="uptime-label">Uptime</span>
@@ -382,9 +413,17 @@
             </div>
 
             <div class="input-group">
-              <label for="cashier-product">Product</label>
-              <select id="cashier-product" name="cashier-product">
-                <option value="">Select a product</option>
+              <label for="cashier-item-type">Type</label>
+              <select id="cashier-item-type" name="cashier-item-type">
+                <option value="product">Product</option>
+                <option value="service">Service</option>
+              </select>
+            </div>
+
+            <div class="input-group">
+              <label for="cashier-item">Item</label>
+              <select id="cashier-item" name="cashier-item">
+                <option value="">Select an item</option>
               </select>
             </div>
 
