@@ -5,8 +5,8 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon server.js",
-    "start": "node server.js",
+    "dev": "node init && nodemon server.js",
+    "start": "node init && node server.js",
     "export:mongo": "echo \"Example exports: mongoexport --uri=$MONGODB_URI --collection=cards --out=cards.json && mongoexport --uri=$MONGODB_URI --collection=transactions --out=transactions.json && mongoexport --uri=$MONGODB_URI --collection=products --out=products.json\""
   },
   "keywords": [],
